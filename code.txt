@@ -1,18 +1,16 @@
 do
 --------------------------------------------------
--- LOAD UI
+-- UI LOAD
 --------------------------------------------------
-local Library =
-loadstring(game:HttpGet(
+local Library = loadstring(game:HttpGet(
 "https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"
 ))()
 
 local Window = Library.CreateLib("Event Collector", "DarkTheme")
 
-local MainTab = Window:NewTab("Main")
-local MainSection = MainTab:NewSection("Control")
-
-local InfoSection = MainTab:NewSection("Info")
+local Tab = Window:NewTab("Main")
+local Control = Tab:NewSection("Control")
+local Info = Tab:NewSection("Info")
 
 --------------------------------------------------
 -- SETTINGS
@@ -30,59 +28,99 @@ local player = Players.LocalPlayer
 --------------------------------------------------
 -- UI LABELS
 --------------------------------------------------
-local eventLabel = InfoSection:NewLabel("Event: none")
-local countLabel = InfoSection:NewLabel("Parts found: 0")
-local targetLabel = InfoSection:NewLabel("Target: none")
+local eventLabel = Info:NewLabel("Event: none")
+local countLabel = Info:NewLabel("Parts: 0")
+local targetLabel = Info:NewLabel("Target: none")
+local statusLabel = Info:NewLabel("Status: idle")
 
 --------------------------------------------------
--- FUNCTIONS
+-- GET CHARACTER SAFE (รองรับการตาย)
 --------------------------------------------------
 local function getChar()
-    return player.Character or player.CharacterAdded:Wait()
+
+    local char = player.Character
+
+    if not char or not char.Parent then
+        char = player.CharacterAdded:Wait()
+    end
+
+    return char
+
 end
 
+--------------------------------------------------
+-- NOCLIP
+--------------------------------------------------
 local function noclip(char, state)
+
     for _,v in pairs(char:GetDescendants()) do
+
         if v:IsA("BasePart") then
             v.CanCollide = state
         end
+
     end
+
 end
 
+--------------------------------------------------
+-- GET POSITION
+--------------------------------------------------
 local function getPos(obj)
+
     if obj:IsA("BasePart") then
         return obj.Position
-    elseif obj:IsA("Model") then
+    end
+
+    if obj:IsA("Model") then
         return obj:GetPivot().Position
     end
+
 end
 
+--------------------------------------------------
+-- GET ACTIVE EVENT + PARTS (รองรับ folder ซ้อน)
+--------------------------------------------------
 local function getAllParts()
 
-    local folder = workspace:FindFirstChild("EventParts")
-    if not folder then return {}, "none" end
+    local main = workspace:FindFirstChild("EventParts")
 
-    local list = {}
-    local eventName = "unknown"
+    if not main then
+        return {}, "none"
+    end
 
-    for _,v in pairs(folder:GetDescendants()) do
+    local foundParts = {}
+    local eventName = "none"
 
-        if v:IsA("BasePart") then
-            table.insert(list, v)
+    for _,eventFolder in pairs(main:GetChildren()) do
 
-            local parentFolder = v:FindFirstAncestorWhichIsA("Folder")
-            if parentFolder and parentFolder.Parent == folder then
-                eventName = parentFolder.Name
+        local temp = {}
+
+        for _,v in pairs(eventFolder:GetDescendants()) do
+
+            if v:IsA("BasePart") then
+                table.insert(temp,v)
             end
 
         end
 
+        if #temp > 0 then
+
+            foundParts = temp
+            eventName = eventFolder.Name
+            break
+
+        end
+
     end
 
-    return list, eventName
+    return foundParts, eventName
 
 end
 
+--------------------------------------------------
+-- FIND NEAREST
+--------------------------------------------------
 local function getNearest(char, parts)
 
     local nearest = nil
@@ -99,8 +137,10 @@ local function getNearest(char, parts)
             local d = (myPos - pos).Magnitude
 
             if d < dist then
+
                 dist = d
                 nearest = v
+
             end
 
         end
@@ -111,45 +151,46 @@ local function getNearest(char, parts)
 
 end
 
-local function moveUnder(char, targetPos)
+--------------------------------------------------
+-- MOVE UNDER MAP
+--------------------------------------------------
+local function moveUnderMap(char, targetPos)
 
-    local start = char:GetPivot().Position
+    local startPos = char:GetPivot().Position
 
-    local startUnder = Vector3.new(
-        start.X,
-        _G.underMapY,
-        start.Z
-    )
+    local startUnder =
+    Vector3.new(startPos.X,_G.underMapY,startPos.Z)
 
-    local endUnder = Vector3.new(
-        targetPos.X,
-        _G.underMapY,
-        targetPos.Z
-    )
+    local endUnder =
+    Vector3.new(targetPos.X,_G.underMapY,targetPos.Z)
 
     noclip(char,false)
 
     char:PivotTo(CFrame.new(startUnder))
 
-    local dist = (endUnder - startUnder).Magnitude
-    local duration = dist / _G.flySpeed
+    local dist = (endUnder-startUnder).Magnitude
+
+    local duration = dist/_G.flySpeed
 
     local startTime = tick()
 
+    statusLabel:UpdateLabel("Status: flying")
+
     while true do
+
+        if not _G.loop then return end
 
         local alpha =
         math.clamp(
-            (tick()-startTime)/duration,
-            0,1
-        )
+        (tick()-startTime)/duration,
+        0,1)
 
         local pos =
         startUnder:Lerp(endUnder,alpha)
 
         char:PivotTo(CFrame.new(pos))
 
-        if alpha >= 1 then break end
+        if alpha>=1 then break end
 
         task.wait()
 
@@ -157,21 +198,29 @@ local function moveUnder(char, targetPos)
 
 end
 
+--------------------------------------------------
+-- COLLECT
+--------------------------------------------------
 local function collect(char, part)
 
     local pos = getPos(part)
+
     if not pos then return end
+
+    statusLabel:UpdateLabel("Status: collecting")
 
     noclip(char,true)
 
     char:PivotTo(
-        CFrame.new(pos + Vector3.new(0,3,0))
+        CFrame.new(pos+Vector3.new(0,3,0))
     )
+
+    task.wait(0.2)
 
 end
 
 --------------------------------------------------
--- MAIN LOOP
+-- MAIN LOOP (ไม่มีวันหยุดจนกว่า loop=false)
 --------------------------------------------------
 task.spawn(function()
 
@@ -185,12 +234,20 @@ task.spawn(function()
             getAllParts()
 
             eventLabel:UpdateLabel(
-                "Event: "..eventName
-            )
+                "Event: "..eventName)
 
             countLabel:UpdateLabel(
-                "Parts found: "..#parts
-            )
+                "Parts: "..#parts)
+
+            if #parts == 0 then
+
+                statusLabel:UpdateLabel(
+                "Status: waiting event")
+
+                task.wait(1)
+                continue
+
+            end
 
             local target =
             getNearest(char,parts)
@@ -198,37 +255,45 @@ task.spawn(function()
             if target then
 
                 targetLabel:UpdateLabel(
-                    "Target: "..target.Name
-                )
+                "Target: "..target.Name)
 
-                local pos = getPos(target)
+                local pos =
+                getPos(target)
 
-                moveUnder(char,pos)
+                if pos then
 
-                collect(char,target)
+                    moveUnderMap(char,pos)
+
+                    collect(char,target)
+
+                end
 
             else
 
                 targetLabel:UpdateLabel(
-                    "Target: none"
-                )
+                "Target: none")
 
             end
 
+        else
+
+            statusLabel:UpdateLabel(
+            "Status: stopped")
+
         end
 
-        task.wait(0.3)
+        task.wait(0.2)
 
     end
 
 end)
 
 --------------------------------------------------
--- UI BUTTON
+-- UI TOGGLE
 --------------------------------------------------
-MainSection:NewToggle(
-"Auto Collect",
-"เปิดปิดระบบ",
+Control:NewToggle(
+"Auto Collect Event",
+"collect automatically",
 function(state)
 
     _G.loop = state
