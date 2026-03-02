@@ -1,1 +1,238 @@
-do local _G=_G;_G.loop=true;_G.flySpeed=800;_G.underMapY=-6;local a=game:GetService("Players").LocalPlayer;local b=workspace:WaitForChild("EventParts");local function c()return a.Character or a.CharacterAdded:Wait()end;local function d(e,f)for g,h in next,e:GetDescendants()do if h:IsA("BasePart")then h.CanCollide=f end end end;local function i(j)if j:IsA("BasePart")then return j.Position elseif j:IsA("Model")then return j:GetPivot().Position end end;local function k(l)local m={}for n,o in next,b:GetDescendants()do if o:IsA("BasePart")or o:IsA("Model")then table.insert(m,o)end end;local p,q=nil,math.huge;local r=l:GetPivot().Position;for s,t in next,m do local u=i(t);if u then local v=(r-u).Magnitude;if v<q then q=v;p=t end end end;return p end;local function w(x,y)local z=x:GetPivot().Position;local A=Vector3.new(z.X,_G.underMapY,z.Z);local B=Vector3.new(y.X,_G.underMapY,y.Z);d(x,false);x:PivotTo(CFrame.new(A));local C=(B-A).Magnitude/_G.flySpeed;local D=tick();repeat local E=math.clamp((tick()-D)/C,0,1);x:PivotTo(CFrame.new(A:Lerp(B,E)));task.wait()until E>=1 end;local function F(G,H)local I=i(H);if I then d(G,true);G:PivotTo(CFrame.new(I+Vector3.new(0,3,0)));task.wait(.3)end end;task.spawn(function()while true do if _G.loop then local J=c();local K=k(J);if K then local L=i(K);if L then w(J,L);F(J,K)end end end;task.wait(.3)end end)end
+do
+--------------------------------------------------
+-- LOAD UI
+--------------------------------------------------
+local Library =
+loadstring(game:HttpGet(
+"https://raw.githubusercontent.com/xHeptc/Kavo-UI-Library/main/source.lua"
+))()
+
+local Window = Library.CreateLib("Event Collector", "DarkTheme")
+
+local MainTab = Window:NewTab("Main")
+local MainSection = MainTab:NewSection("Control")
+
+local InfoSection = MainTab:NewSection("Info")
+
+--------------------------------------------------
+-- SETTINGS
+--------------------------------------------------
+_G.loop = false
+_G.flySpeed = 800
+_G.underMapY = -6
+
+--------------------------------------------------
+-- SERVICES
+--------------------------------------------------
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+
+--------------------------------------------------
+-- UI LABELS
+--------------------------------------------------
+local eventLabel = InfoSection:NewLabel("Event: none")
+local countLabel = InfoSection:NewLabel("Parts found: 0")
+local targetLabel = InfoSection:NewLabel("Target: none")
+
+--------------------------------------------------
+-- FUNCTIONS
+--------------------------------------------------
+local function getChar()
+    return player.Character or player.CharacterAdded:Wait()
+end
+
+local function noclip(char, state)
+    for _,v in pairs(char:GetDescendants()) do
+        if v:IsA("BasePart") then
+            v.CanCollide = state
+        end
+    end
+end
+
+local function getPos(obj)
+    if obj:IsA("BasePart") then
+        return obj.Position
+    elseif obj:IsA("Model") then
+        return obj:GetPivot().Position
+    end
+end
+
+local function getAllParts()
+
+    local folder = workspace:FindFirstChild("EventParts")
+    if not folder then return {}, "none" end
+
+    local list = {}
+    local eventName = "unknown"
+
+    for _,v in pairs(folder:GetDescendants()) do
+
+        if v:IsA("BasePart") then
+            table.insert(list, v)
+
+            local parentFolder = v:FindFirstAncestorWhichIsA("Folder")
+            if parentFolder and parentFolder.Parent == folder then
+                eventName = parentFolder.Name
+            end
+
+        end
+
+    end
+
+    return list, eventName
+
+end
+
+local function getNearest(char, parts)
+
+    local nearest = nil
+    local dist = math.huge
+
+    local myPos = char:GetPivot().Position
+
+    for _,v in pairs(parts) do
+
+        local pos = getPos(v)
+
+        if pos then
+
+            local d = (myPos - pos).Magnitude
+
+            if d < dist then
+                dist = d
+                nearest = v
+            end
+
+        end
+
+    end
+
+    return nearest
+
+end
+
+local function moveUnder(char, targetPos)
+
+    local start = char:GetPivot().Position
+
+    local startUnder = Vector3.new(
+        start.X,
+        _G.underMapY,
+        start.Z
+    )
+
+    local endUnder = Vector3.new(
+        targetPos.X,
+        _G.underMapY,
+        targetPos.Z
+    )
+
+    noclip(char,false)
+
+    char:PivotTo(CFrame.new(startUnder))
+
+    local dist = (endUnder - startUnder).Magnitude
+    local duration = dist / _G.flySpeed
+
+    local startTime = tick()
+
+    while true do
+
+        local alpha =
+        math.clamp(
+            (tick()-startTime)/duration,
+            0,1
+        )
+
+        local pos =
+        startUnder:Lerp(endUnder,alpha)
+
+        char:PivotTo(CFrame.new(pos))
+
+        if alpha >= 1 then break end
+
+        task.wait()
+
+    end
+
+end
+
+local function collect(char, part)
+
+    local pos = getPos(part)
+    if not pos then return end
+
+    noclip(char,true)
+
+    char:PivotTo(
+        CFrame.new(pos + Vector3.new(0,3,0))
+    )
+
+end
+
+--------------------------------------------------
+-- MAIN LOOP
+--------------------------------------------------
+task.spawn(function()
+
+    while true do
+
+        if _G.loop then
+
+            local char = getChar()
+
+            local parts, eventName =
+            getAllParts()
+
+            eventLabel:UpdateLabel(
+                "Event: "..eventName
+            )
+
+            countLabel:UpdateLabel(
+                "Parts found: "..#parts
+            )
+
+            local target =
+            getNearest(char,parts)
+
+            if target then
+
+                targetLabel:UpdateLabel(
+                    "Target: "..target.Name
+                )
+
+                local pos = getPos(target)
+
+                moveUnder(char,pos)
+
+                collect(char,target)
+
+            else
+
+                targetLabel:UpdateLabel(
+                    "Target: none"
+                )
+
+            end
+
+        end
+
+        task.wait(0.3)
+
+    end
+
+end)
+
+--------------------------------------------------
+-- UI BUTTON
+--------------------------------------------------
+MainSection:NewToggle(
+"Auto Collect",
+"เปิดปิดระบบ",
+function(state)
+
+    _G.loop = state
+
+end)
+
+end
